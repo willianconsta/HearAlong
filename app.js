@@ -7,8 +7,12 @@ var io = require('socket.io').listen(eventPort)
 var uuid = require('node-uuid')
 
 var queue = []
+var users = []
 
 io.on('connection', function (socket) {
+  var remoteAddress = socket.handshake.headers.host || socket.request.connection.remoteAddress
+  users.push(remoteAddress)
+
   function playNext (startTime) {
     if (queue.length > 0) {
       var nextVideo = queue[0]
@@ -27,17 +31,17 @@ io.on('connection', function (socket) {
   }
 
   socket.on('userConnected', function () {
-    console.log('User connected: ', socket.request.connection.remoteAddress)
+    console.log('User connected: ', remoteAddress)
     if (queue.length > 0 && queue[0].startedTime) {
       var startTime = new Date().getTime() - queue[0].startedTime
-      console.log('User ', socket.request.connection.remoteAddress, ' will listen to ', queue[0], ' starting at ', startTime)
+      console.log('User ', remoteAddress, ' will listen to ', queue[0], ' starting at ', startTime)
       playNext(startTime)
     }
   })
 
   socket.on('suggestVideo', function (videoSuggest) {
     videoSuggest.uuid = uuid.v4()
-    console.log('Video suggestion ', videoSuggest, ' from ', socket.request.connection.remoteAddress)
+    console.log('Video suggestion ', videoSuggest, ' from ', remoteAddress)
     queue.push(videoSuggest)
     if (queue.length === 1) {
       console.log('Queue was empty. Starting to play.')
@@ -47,7 +51,7 @@ io.on('connection', function (socket) {
   })
 
   socket.on('endVideo', function (video) {
-    console.log('User ', socket.request.connection.remoteAddress, ' ending reproduction of video, ', video)
+    console.log('User ', remoteAddress, ' ending reproduction of video, ', video)
     setTimeout(function () {
       if (queue.length > 0) {
         if (queue[0].uuid === video.uuid) {
@@ -67,13 +71,22 @@ io.on('connection', function (socket) {
     }, 2000)
   })
 
-  console.log('connected ', socket.request.connection.remoteAddress)
+  socket.on('disconnect', function () {
+    console.log('User ', remoteAddress, ' disconnected')
+    users.splice(users.indexOf(remoteAddress), 1)
+  })
+
+  console.log('connected ', remoteAddress)
 })
 
 express()
   .use(express.static('public'))
   .get('/queue', function (req, res, next) {
     res.json(queue)
+    next()
+  })
+  .get('/users', function (req, res, next) {
+    res.json(users)
     next()
   })
   .listen(port, function () {
