@@ -33,40 +33,7 @@
     //    after the API code downloads.
     var player;
     var playerReady = false;
-    var videoDuration = null;
     var currentVideo = null;
-    function onYouTubeIframeAPIReady() {
-        player = new YT.Player('video', {
-            height: '0',
-            width: '0',
-            playerVars: {'controls': 0},
-            events: {
-                'onReady': function () {
-                    playerReady = true;
-                },
-                'onStateChange': function (state) {
-                    if (state.data === YT.PlayerState.PLAYING) {
-                        document.getElementById('current').innerText = player.getVideoData().title;
-                    }
-                    if (state.data === YT.PlayerState.ENDED || state.data === YT.PlayerState.VIDEO_CUED) {
-                        if (currentVideo != null) {
-                            var queue = document.getElementById('queue');
-                            if (queue.childElementCount > 25) {
-                                queue.removeChild(queue.lastElementChild);
-                            }
-                            var lastPlayed = document.createElement('li');
-                            lastPlayed.innerHTML = "<a href='https://www.youtube.com/watch?v=" + currentVideo.url + "'>" + document.getElementById('current').innerText + "</a>";
-                            queue.insertBefore(lastPlayed, queue.firstElementChild);
-                            document.getElementById('current').innerText = '';
-                            console.log('Video ended.');
-                            skip();
-                            currentVideo = null;
-                        }
-                    }
-                }
-            }
-        });
-    }
 
     function suggest() {
         const input = document.getElementById('newVideo');

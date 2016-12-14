@@ -8,10 +8,9 @@
     "start": "npm install && nodemon --exec \"npm run serve\""
   },
   "dependencies": {
-    "connect": "^3.5.0",
+    "express": "^4.14.0",
     "node-uuid": "1.4.7",
     "nodemon": "^1.11.0",
-    "serve-static": "^1.11.1",
     "socket.io": "1.4.5",
     "standard": "^8.6.0"
   }

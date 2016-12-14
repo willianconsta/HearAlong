@@ -1,9 +1,5 @@
 var port = 9615
-var connect = require('connect')
-var serveStatic = require('serve-static')
-connect().use(serveStatic(__dirname)).listen(port, function () {
-  console.log('Server running on ' + port + '...')
-})
+var express = require('express')
 
 var eventPort = 9672
 var io = require('socket.io').listen(eventPort)
@@ -73,3 +69,13 @@ io.on('connection', function (socket) {
 
   console.log('connected ', socket.request.connection.remoteAddress)
 })
+
+express()
+  .use(express.static('public'))
+  .get('/queue', function (req, res, next) {
+    res.json(queue)
+    next()
+  })
+  .listen(port, function () {
+    console.log('Server running on ' + port + '...')
+  })
