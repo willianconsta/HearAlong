@@ -3,7 +3,8 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "serve": "node ./app.js",
+    "lint": "standard --fix",
+    "serve": "npm run lint && node ./app.js",
     "start": "npm install && nodemon --exec \"npm run serve\""
   },
   "dependencies": {
@@ -11,6 +12,7 @@
     "node-uuid": "1.4.7",
     "nodemon": "^1.11.0",
     "serve-static": "^1.11.1",
-    "socket.io": "1.4.5"
+    "socket.io": "1.4.5",
+    "standard": "^8.6.0"
   }
 }
