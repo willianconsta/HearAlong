@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>HearAlong</title>
+    <script src="https://cdn.socket.io/socket.io-1.4.5.js"></script>
+    <script src="https://www.youtube.com/iframe_api"></script>
+</head>
+<body>
+<div style="text-align: center">
+    <div>FIESTA!</div>
+    <input id="newVideo" type="text">
+    <button onclick="suggest()">Add to queue</button>
+    <button onclick="skip()">Skip</button>
+</div>
+<div id="video">
+
+</div>
+<div id="info" style="text-align: center">
+    <div id="current" style="text-align: center"></div>
+    <div id="queue_div" style="text-align: center">
+        <ol id="queue">
+        </ol>
+    </div>
+</div>
+
+<script>
+    var serverUrl = 'http://' + window.location.hostname + ':9672';
+    console.log('Connecting to ', serverUrl);
+    var socket = io.connect(serverUrl);
+
+    // 3. This function creates an <iframe> (and YouTube player)
+    //    after the API code downloads.
+    var player;
+    var playerReady = false;
+    var videoDuration = null;
+    var currentVideo = null;
+    function onYouTubeIframeAPIReady() {
+        player = new YT.Player('video', {
+            height: '0',
+            width: '0',
+            playerVars: {'controls': 0},
+            events: {
+                'onReady': function () {
+                    playerReady = true;
+                },
+                'onStateChange': function (state) {
+                    if (state.data === YT.PlayerState.PLAYING) {
+                        document.getElementById('current').innerText = player.getVideoData().title;
+                    }
+                    if (state.data === YT.PlayerState.ENDED || state.data === YT.PlayerState.VIDEO_CUED) {
+                        if (currentVideo != null) {
+                            var queue = document.getElementById('queue');
+                            if (queue.childElementCount > 25) {
+                                queue.removeChild(queue.lastElementChild);
+                            }
+                            var lastPlayed = document.createElement('li');
+                            lastPlayed.innerHTML = "<a href='https://www.youtube.com/watch?v=" + currentVideo.url + "'>" + document.getElementById('current').innerText + "</a>";
+                            queue.insertBefore(lastPlayed, queue.firstElementChild);
+                            document.getElementById('current').innerText = '';
+                            console.log('Video ended.');
+                            skip();
+                            currentVideo = null;
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function suggest() {
+        const input = document.getElementById('newVideo');
+        var videoInput = input.value;
+
+        function extractVideoId() {
+            var httpsRegex = /https:\/\/www.youtube.com\/watch\?v=(.{11})/g;
+            var matchHttps = httpsRegex.exec(videoInput);
+            if (matchHttps != null) {
+                return matchHttps[1];
+            }
+
+            var httpRegex = /http:\/\/www.youtube.com\/watch\?v=(.{11})/g;
+            var httpMatch = httpRegex.exec(videoInput);
+            if (httpMatch != null) {
+                return httpMatch[1];
+            }
+
+            var videoIdRegex = /(.{11})/g;
+            var videoIdMatch = videoIdRegex.exec(videoInput);
+            if (videoIdMatch != null) {
+                return videoIdMatch[1];
+            }
+
+            return null;
+        }
+
+        var videoId = extractVideoId();
+        console.log('Video id ', videoId);
+        if (videoId == null) {
+            return;
+        }
+        socket.emit('suggestVideo', {
+            url: videoId
+        });
+        input.value = "";
+    }
+
+    function skip() {
+        if (currentVideo != null) {
+            socket.emit('endVideo', currentVideo);
+        }
+    }
+
+    socket.on('stopVideo', function (current) {
+        console.log('Server requested stop of video ', current);
+        if (currentVideo != null && currentVideo.uuid == current.uuid) {
+            console.log('Stopping video.');
+            player.stopVideo();
+            document.getElementById('current').innerHTML = '';
+            currentVideo = null;
+        }
+    });
+
+    socket.on('playVideo', function (current) {
+        console.log('Request video play ', current);
+        var t = Math.round(current.startTime / 1000);
+        if (currentVideo != null && currentVideo.uuid === current.uuid) {
+            // mesmo video atual
+            console.log('Same video.');
+            if (player.getPlayerState() === YT.PlayerState.PLAYING) {
+                var currentTime = player.getCurrentTime();
+                console.log('Still playing at ', currentTime);
+                // já está tocando, só acerta a posição se estiver muito defasado
+                if (Math.abs(currentTime - t) > 3) {
+                    console.log('Adjusting time to ', t);
+                    player.seekTo(t, true);
+                }
+                return;
+            }
+        }
+
+        console.log('New video.');
+        currentVideo = current;
+        function changeVideoId() {
+            setTimeout(function () {
+                if (!playerReady) {
+                    changeVideoId();
+                    return;
+                }
+
+                console.log('Playing ', current.url, ' starting at ', t);
+                player.loadVideoById(current.url, t);
+            }, 100);
+        }
+
+        changeVideoId();
+    });
+
+    socket.on('connect', function () {
+        socket.emit('userConnected');
+    })
+</script>
+</body>
+</html>
