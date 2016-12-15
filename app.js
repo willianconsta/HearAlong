@@ -14,7 +14,7 @@ io.on('connection', function (socket) {
   var user = {
     id: uuid.v4(),
     ip: socket.request.connection.remoteAddress.replace(/^.*:/, ''),
-    name: null
+    hostname: null
   }
   users.push(user)
 
@@ -91,7 +91,7 @@ io.on('connection', function (socket) {
       console.error(err)
       return
     }
-    user.name = hostname
+    user.hostname = hostname
     io.emit('usersChanged')
   })
 })

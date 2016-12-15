@@ -173,7 +173,7 @@
         var usersDiv = document.getElementById("users")
         getJson("/users", function success(users) {
             usersDiv.innerHTML = users.map(function (user) {
-                return user.name || user.ip
+                return user.name || user.hostname || user.ip
             }).sort().join("<br>");
         }, function () {
             usersDiv.innerHTML = "Error loading users";
