@@ -4,8 +4,6 @@
     <meta charset="UTF-8">
     <title>HearAlong</title>
     <script src="https://cdn.socket.io/socket.io-1.4.5.js"></script>
-    <script src="https://code.jquery.com/jquery-3.1.1.min.js"
-            integrity="sha256-hVVnYaiADRTO2PzUGmuLJr8BLUSjGIZsDYGmIJLv2b8=" crossorigin="anonymous"></script>
     <script src="https://www.youtube.com/iframe_api"></script>
 </head>
 <body>
@@ -172,13 +170,28 @@
 
     updateUsers()
     function updateUsers() {
-        $.get("/users").done(function (users) {
-            $("#users").text(users.map(function (user) {
+        var usersDiv = document.getElementById("users")
+        getJson("/users", function success(users) {
+            usersDiv.innerHTML = users.map(function (user) {
                 return user.name || user.ip
-            }).sort().join("<br>"));
-        }).fail(function () {
-            $("#users").text("");
+            }).sort().join("<br>");
+        }, function () {
+            usersDiv.innerHTML = "Error loading users";
         })
+    }
+
+    function getJson(url, success, failure) {
+        var request = new XMLHttpRequest();
+        request.open('GET', url, true);
+        request.onload = function() {
+            if (request.status >= 200 && request.status < 400) {
+                success(JSON.parse(request.responseText));
+            } else {
+                failure(request.responseText);
+            }
+        };
+        request.onerror = failure;
+        request.send();
     }
 </script>
 </body>
