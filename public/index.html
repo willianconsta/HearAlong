@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <title>HearAlong</title>
     <script src="https://cdn.socket.io/socket.io-1.4.5.js"></script>
+    <script src="https://code.jquery.com/jquery-3.1.1.min.js"
+            integrity="sha256-hVVnYaiADRTO2PzUGmuLJr8BLUSjGIZsDYGmIJLv2b8=" crossorigin="anonymous"></script>
     <script src="https://www.youtube.com/iframe_api"></script>
 </head>
 <body>
@@ -23,6 +25,8 @@
         </ol>
     </div>
 </div>
+
+<div id="users"></div>
 
 <script>
     var serverUrl = 'http://' + window.location.hostname + ':9672';
@@ -123,9 +127,25 @@
         changeVideoId();
     });
 
+    socket.on('usersChanged', function () {
+        console.log("usersChanged")
+        updateUsers()
+    });
+
     socket.on('connect', function () {
         socket.emit('userConnected');
     })
+
+    updateUsers()
+    function updateUsers() {
+        $.get("/users").done(function (users) {
+            $("#users").text(users.map(function (user) {
+                return user.name || user.ip
+            }).sort().join("<br>"));
+        }).fail(function () {
+            $("#users").text("");
+        })
+    }
 </script>
 </body>
 </html>

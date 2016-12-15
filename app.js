@@ -1,5 +1,6 @@
 var port = 9615
 var express = require('express')
+var dns = require('dns')
 
 var eventPort = 9672
 var io = require('socket.io').listen(eventPort)
@@ -10,8 +11,12 @@ var queue = []
 var users = []
 
 io.on('connection', function (socket) {
-  var remoteAddress = socket.handshake.headers.host || socket.request.connection.remoteAddress
-  users.push(remoteAddress)
+  var user = {
+    id: uuid.v4(),
+    ip: socket.request.connection.remoteAddress.replace(/^.*:/, ''),
+    name: null
+  }
+  users.push(user)
 
   function playNext (startTime) {
     if (queue.length > 0) {
@@ -23,7 +28,7 @@ io.on('connection', function (socket) {
         startTime: startTime
       }
       socket.emit('playVideo', currentVideo)
-      socket.broadcast.emit('playVideo', currentVideo)
+      io.emit('playVideo', currentVideo)
       nextVideo.startedTime = nextVideo.startedTime || new Date().getTime()
     } else {
       console.log('Empty queue')
@@ -31,17 +36,18 @@ io.on('connection', function (socket) {
   }
 
   socket.on('userConnected', function () {
-    console.log('User connected: ', remoteAddress)
+    console.log('User connected: ', user)
     if (queue.length > 0 && queue[0].startedTime) {
       var startTime = new Date().getTime() - queue[0].startedTime
-      console.log('User ', remoteAddress, ' will listen to ', queue[0], ' starting at ', startTime)
+      console.log('User ', user, ' will listen to ', queue[0], ' starting at ', startTime)
       playNext(startTime)
     }
+    io.emit('usersChanged')
   })
 
   socket.on('suggestVideo', function (videoSuggest) {
     videoSuggest.uuid = uuid.v4()
-    console.log('Video suggestion ', videoSuggest, ' from ', remoteAddress)
+    console.log('Video suggestion ', videoSuggest, ' from ', user)
     queue.push(videoSuggest)
     if (queue.length === 1) {
       console.log('Queue was empty. Starting to play.')
@@ -51,13 +57,13 @@ io.on('connection', function (socket) {
   })
 
   socket.on('endVideo', function (video) {
-    console.log('User ', remoteAddress, ' ending reproduction of video, ', video)
+    console.log('User ', user, ' ending reproduction of video, ', video)
     setTimeout(function () {
       if (queue.length > 0) {
         if (queue[0].uuid === video.uuid) {
           console.log('Removing ', queue[0], ' from queue.')
           socket.emit('stopVideo', video)
-          socket.broadcast.emit('stopVideo', video)
+          io.emit('stopVideo', video)
           queue.shift()
           setTimeout(function () {
             playNext(0)
@@ -72,11 +78,22 @@ io.on('connection', function (socket) {
   })
 
   socket.on('disconnect', function () {
-    console.log('User ', remoteAddress, ' disconnected')
-    users.splice(users.indexOf(remoteAddress), 1)
+    console.log('User ', user, ' disconnected')
+    remove(users, user)
+    io.emit('usersChanged')
   })
 
-  console.log('connected ', remoteAddress)
+  console.log('connected ', user)
+  io.emit('usersChanged')
+
+  dns.lookupService(user.ip, 0, function (err, hostname) {
+    if (err) {
+      console.error(err)
+      return
+    }
+    user.name = hostname
+    io.emit('usersChanged')
+  })
 })
 
 express()
@@ -92,3 +109,7 @@ express()
   .listen(port, function () {
     console.log('Server running on ' + port + '...')
   })
+
+function remove (array, object) {
+  array.splice(array.indexOf(object), 1)
+}
