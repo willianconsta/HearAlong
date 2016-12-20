@@ -5,6 +5,22 @@
     <title>HearAlong</title>
     <script src="https://cdn.socket.io/socket.io-1.4.5.js"></script>
     <script src="https://www.youtube.com/iframe_api"></script>
+
+    <style>
+        .videoContainer {
+            padding: 5px;
+        }
+
+        .videoContainer::before,
+        .videoContainer::after {
+            clear: both;
+        }
+
+        .videoThumbnail {
+            margin-right: 5px;
+            float: left;
+        }
+    </style>
 </head>
 <body>
 <div style="text-align: center">
@@ -23,6 +39,15 @@
         </ol>
     </div>
 </div>
+
+<form id="search">
+    <label>search
+        <input type="text" name="searchInput"/>
+    </label>
+    <input type="submit"/>
+
+    <div id="results"></div>
+</form>
 
 <div id="users"></div>
 
@@ -102,10 +127,14 @@
         if (videoId == null) {
             return;
         }
+        sendSuggestion(videoId);
+        input.value = "";
+    }
+
+    function sendSuggestion(videoId) {
         socket.emit('suggestVideo', {
             url: videoId
         });
-        input.value = "";
     }
 
     function skip() {
@@ -183,7 +212,7 @@
     function getJson(url, success, failure) {
         var request = new XMLHttpRequest();
         request.open('GET', url, true);
-        request.onload = function() {
+        request.onload = function () {
             if (request.status >= 200 && request.status < 400) {
                 success(JSON.parse(request.responseText));
             } else {
@@ -193,6 +222,74 @@
         request.onerror = failure;
         request.send();
     }
+</script>
+
+<script src="https://apis.google.com/js/api.js"></script>
+<script>
+    (function () {
+        var searchForm = document.getElementById("search");
+
+        gapi.load('client', start);
+        function start() {
+            // 2. Initialize the JavaScript client library.
+            gapi.client.init({
+                'apiKey': 'AIzaSyBC-3U4J-I_O7Bxb-K-_NYGeYSBDyot798',
+                'discoveryDocs': ['https://www.googleapis.com/discovery/v1/apis/youtube/v3/rest'],
+                'scope': 'profile'
+            }).then(initializeForm, function (reason) {
+                console.error('Error: ', reason);
+            });
+        }
+
+        // 1. Load the JavaScript client library.
+
+        function initializeForm() {
+            searchForm.addEventListener("submit", function (ev) {
+                ev.preventDefault();
+
+                var searchQuery = searchForm.searchInput.value;
+                return gapi.client.youtube.search.list({
+                    q: searchQuery,
+                    part: 'id,snippet'
+                }).then(function (response) {
+                    return response.result;
+                }).then(showSearchResults);
+            })
+        }
+
+        function showSearchResults(results) {
+            var resultsContainer = document.createDocumentFragment();
+            results.items.forEach(function (video) {
+                var videoContainer = document.createElement("div");
+                var videoName = document.createElement("h1");
+                var videoThumbnail = document.createElement("img");
+                var videoSuggestButton = document.createElement("button");
+                videoContainer.appendChild(videoThumbnail);
+                videoContainer.appendChild(videoName);
+                resultsContainer.appendChild(videoContainer);
+                videoContainer.appendChild(videoSuggestButton);
+
+                videoContainer.className = "videoContainer";
+                videoName.className = "videoName";
+                videoThumbnail.className = "videoThumbnail";
+                videoSuggestButton.className = "videoSuggestButton";
+                videoSuggestButton.addEventListener("click", videoSuggestButtonClick)
+
+                videoName.innerHTML = video.snippet.title;
+                videoThumbnail.src = video.snippet.thumbnails.default.url;
+                videoSuggestButton.innerHTML = "Suggest";
+                videoSuggestButton.dataset.videoId = video.id.videoId;
+            });
+            var elementById = document.getElementById("results");
+            elementById.innerHTML = "";
+            elementById.appendChild(resultsContainer);
+        }
+
+        function videoSuggestButtonClick(ev) {
+            ev.preventDefault();
+            sendSuggestion(ev.target.dataset.videoId)
+        }
+    }())
 </script>
 </body>
 </html>
