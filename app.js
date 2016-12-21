@@ -13,8 +13,9 @@ var users = []
 io.on('connection', function (socket) {
   var user = {
     id: uuid.v4(),
-    ip: socket.request.connection.remoteAddress.replace(/^.*:/, ''),
-    hostname: null
+    ip: socket.request.connection.remoteAddress,
+    hostname: null,
+    showName: socket.request.connection.remoteAddress
   }
   users.push(user)
 
@@ -24,6 +25,7 @@ io.on('connection', function (socket) {
       console.log('Play next video ', nextVideo, ' at ', startTime)
       var currentVideo = {
         url: nextVideo.url,
+        title: nextVideo.title,
         uuid: nextVideo.uuid,
         startTime: startTime
       }
@@ -45,10 +47,27 @@ io.on('connection', function (socket) {
     io.emit('usersChanged')
   })
 
+  socket.on('userName', function (userName) {
+    console.log('User ', user.hostname, ' (', user.ip, ') is named ' + userName)
+    const userNames = users.map(function (user) {
+      return user.showName
+    })
+    if (userNames.indexOf(userName) !== -1) {
+      userName += '/' + (user.hostname || user.ip)
+    }
+    user.name = userName
+    user.showName = userName
+  })
+
   socket.on('suggestVideo', function (videoSuggest) {
     videoSuggest.uuid = uuid.v4()
     console.log('Video suggestion ', videoSuggest, ' from ', user)
-    queue.push(videoSuggest)
+    queue.push({
+      url: videoSuggest.url,
+      title: videoSuggest.title,
+      user: user,
+      uuid: videoSuggest.uuid
+    })
     if (queue.length === 1) {
       console.log('Queue was empty. Starting to play.')
       playNext(0)
@@ -77,6 +96,27 @@ io.on('connection', function (socket) {
     }, 2000)
   })
 
+  socket.on('skipVideo', function (video) {
+    console.log('User ', user, ' skipping reproduction of video, ', video)
+    setTimeout(function () {
+      if (queue.length > 0) {
+        if (queue[0].uuid === video.uuid) {
+          console.log('Removing ', queue[0], ' from queue.')
+          socket.emit('skipVideo', video, user)
+          io.emit('skipVideo', video, user)
+          queue.shift()
+          setTimeout(function () {
+            playNext(0)
+          }, 500)
+        } else {
+          console.log('Video ', video.uuid, ' does not match with the first in queue ', queue[0].uuid)
+        }
+      } else {
+        console.log('Video ', video, ' is not on the queue anymore.')
+      }
+    }, 2000)
+  })
+
   socket.on('disconnect', function () {
     console.log('User ', user, ' disconnected')
     remove(users, user)
@@ -92,6 +132,9 @@ io.on('connection', function (socket) {
       return
     }
     user.hostname = hostname
+    if (user.showName === user.ip) {
+      user.showName = user.hostname
+    }
     io.emit('usersChanged')
   })
 })
@@ -99,7 +142,7 @@ io.on('connection', function (socket) {
 express()
   .use(express.static('public'))
   .get('/queue', function (req, res, next) {
-    res.json(queue)
+    res.json(queue.slice(1))
     next()
   })
   .get('/users', function (req, res, next) {

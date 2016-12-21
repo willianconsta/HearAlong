@@ -1,8 +1,38 @@
 body {
-  padding: 50px;
+  padding: 20px;
   font: 14px "Lucida Grande", Helvetica, Arial, sans-serif;
+}
+
+.logo {
+  padding: 2px;
+}
+
+.currentMusic {
+  font-weight: bold;
+  text-align: center;
+  padding: 10px;
+}
+
+.controlButtons {
+  padding: 2px;
+}
+
+.songSuggested {
+  padding: 50px;
+  color: grey;
 }
 
 a {
   color: #00B7FF;
+}
+
+.videoResults {
+  max-height: 500px;
+  overflow: auto;
+  width: 80%;
+  margin: 0 auto;
+}
+
+.videoContainer {
+  height: 90px;
 }

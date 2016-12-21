@@ -3,8 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <title>HearAlong</title>
+    <link rel="stylesheet" type="text/css" href="./stylesheets/style.css">
     <script src="https://cdn.socket.io/socket.io-1.4.5.js"></script>
     <script src="https://www.youtube.com/iframe_api"></script>
+    <script src="./javascripts/suggest.js"></script>
 
     <style>
         .videoContainer {
@@ -22,45 +24,80 @@
         }
     </style>
 </head>
-<body>
+<body onload="askName();">
 <div style="text-align: center">
-    <div>FIESTA!</div>
-    <input id="newVideo" type="text">
-    <button onclick="suggest()">Add to queue</button>
-    <button onclick="skip()">Skip</button>
+    <div id="logo" class="logo">FIESTA!</div>
+    <div id="controlButtons" class="controlButtons">
+        <div id="current" class="currentMusic"></div>
+        <button onclick="skip()">Skip</button>
+        <button onclick="askName()">Change Name</button>
+    </div>
 </div>
+<hr>
+<div id="search" style="text-align: center">
+    <form id="searchForm">
+        <label>
+            <span>Search:</span>
+            <input type="text" name="searchInput"/>
+        </label>
+        <input type="submit" value="Go!"/>
+        <input type="button" value="Clear results" onclick="clearResults()"/>
+
+        <div id="songSuggested" class="songSuggested" style="display: none"></div>
+        <div id="results" class="videoResults"></div>
+    </form>
+</div>
+
 <div id="video">
 
 </div>
 <div id="info" style="text-align: center">
-    <div id="current" style="text-align: center"></div>
     <div id="queue_div" style="text-align: center">
+        <span>Next songs:</span>
+        <span id="emptyqueue" style="display: none">The queue is empty! Suggest something epic!</span>
         <ol id="queue">
+        </ol>
+        <span id="previousMsg" style="display: none">Previous songs:</span>
+        <ol id="playedMusics">
         </ol>
     </div>
 </div>
 
-<form id="search">
-    <label>search
-        <input type="text" name="searchInput"/>
-    </label>
-    <input type="submit"/>
-
-    <div id="results"></div>
-</form>
-
-<div id="users"></div>
+<div id="users">
+    <span>Online users:</span>
+    <div id="usersList">
+    </div>
+</div>
 
 <script>
     var serverUrl = 'http://' + window.location.hostname + ':9672';
     console.log('Connecting to ', serverUrl);
-    var socket = io.connect(serverUrl);
+    var socket = io.connect(serverUrl, {'sync disconnect on unload': true});
+
+    function askName() {
+        var person = prompt("Please enter your name", "VeryHappyUser");
+        socket.emit('userName', person);
+        updateUsers();
+    }
 
     // 3. This function creates an <iframe> (and YouTube player)
     //    after the API code downloads.
     var player;
     var playerReady = false;
     var currentVideo = null;
+
+    function addToPreviousSongs(video, user) {
+        var previousMsg = document.getElementById('previousMsg');
+        previousMsg.style.display = 'block';
+        var playedMusics = document.getElementById('playedMusics');
+        if (playedMusics.childElementCount > 4) {
+            playedMusics.removeChild(playedMusics.lastElementChild);
+        }
+        var lastPlayed = document.createElement('li');
+        const skipMessage = ( user ? " (Skipped by " + user.name + ")" : "" );
+        lastPlayed.innerHTML = "<a href='https://www.youtube.com/watch?v=" + video.url + "'>" + video.title + "</a> " + skipMessage;
+        playedMusics.insertBefore(lastPlayed, playedMusics.firstElementChild);
+    }
 
     // callback utilizada pelo youtube api
     function onYouTubeIframeAPIReady() {
@@ -78,16 +115,10 @@
                     }
                     if (state.data === YT.PlayerState.ENDED || state.data === YT.PlayerState.VIDEO_CUED) {
                         if (currentVideo != null) {
-                            var queue = document.getElementById('queue');
-                            if (queue.childElementCount > 25) {
-                                queue.removeChild(queue.lastElementChild);
-                            }
-                            var lastPlayed = document.createElement('li');
-                            lastPlayed.innerHTML = "<a href='https://www.youtube.com/watch?v=" + currentVideo.url + "'>" + document.getElementById('current').innerText + "</a>";
-                            queue.insertBefore(lastPlayed, queue.firstElementChild);
+                            addToPreviousSongs(currentVideo, null);
                             document.getElementById('current').innerText = '';
                             console.log('Video ended.');
-                            skip();
+                            socket.emit('endVideo', currentVideo);
                             currentVideo = null;
                         }
                     }
@@ -96,50 +127,44 @@
         });
     }
 
-    function suggest() {
-        const input = document.getElementById('newVideo');
-        var videoInput = input.value;
-
-        function extractVideoId() {
-            var httpsRegex = /https:\/\/www.youtube.com\/watch\?v=(.{11})/g;
-            var matchHttps = httpsRegex.exec(videoInput);
-            if (matchHttps != null) {
-                return matchHttps[1];
-            }
-
-            var httpRegex = /http:\/\/www.youtube.com\/watch\?v=(.{11})/g;
-            var httpMatch = httpRegex.exec(videoInput);
-            if (httpMatch != null) {
-                return httpMatch[1];
-            }
-
-            var videoIdRegex = /(.{11})/g;
-            var videoIdMatch = videoIdRegex.exec(videoInput);
-            if (videoIdMatch != null) {
-                return videoIdMatch[1];
-            }
-
-            return null;
-        }
-
-        var videoId = extractVideoId();
-        console.log('Video id ', videoId);
-        if (videoId == null) {
-            return;
-        }
-        sendSuggestion(videoId);
-        input.value = "";
-    }
-
-    function sendSuggestion(videoId) {
+    function sendSuggestion(videoId, videoTitle) {
+        console.log('Suggesting ', videoTitle, ' (', videoId, ')');
         socket.emit('suggestVideo', {
-            url: videoId
+            url: videoId,
+            title: videoTitle
         });
+        updateQueue();
     }
+
+    function updateQueue() {
+        console.log('Updating queue')
+        getJson('/queue', function (queue) {
+            console.log('Queue is ', queue.map(function (item) {
+                return item.title;
+            }).join(","))
+            const queueList = document.getElementById('queue');
+            const emptyMsg = document.getElementById('emptyqueue');
+            queueList.innerHTML = "";
+            if (queue.length > 0) {
+                emptyMsg.style.display = 'none';
+                queue.forEach(function (item) {
+                    const queueItem = document.createElement('li');
+                    queueItem.innerText = item.user.showName + ' suggested ' + item.title;
+                    queueList.appendChild(queueItem);
+                });
+            } else {
+                emptyMsg.style.display = 'block';
+            }
+        }, function (failureText) {
+            console.log('Failed to get queue')
+            queueDiv.innerText = failureText;
+        })
+    }
+    setInterval(updateQueue, 10000);
 
     function skip() {
         if (currentVideo != null) {
-            socket.emit('endVideo', currentVideo);
+            socket.emit('skipVideo', currentVideo);
         }
     }
 
@@ -153,32 +178,44 @@
         }
     });
 
+    socket.on('skipVideo', function (current, user) {
+        console.log('User ', user, ' requested skip of video ', current);
+        if (currentVideo != null && currentVideo.uuid == current.uuid) {
+            console.log('Skipping video.');
+            addToPreviousSongs(current, user);
+            player.stopVideo();
+            document.getElementById('current').innerHTML = '';
+            currentVideo = null;
+        }
+    });
+
     socket.on('playVideo', function (current) {
         console.log('Request video play ', current);
-        var t = Math.round(current.startTime / 1000);
-        if (currentVideo != null && currentVideo.uuid === current.uuid) {
-            // mesmo video atual
-            console.log('Same video.');
-            if (player.getPlayerState() === YT.PlayerState.PLAYING) {
-                var currentTime = player.getCurrentTime();
-                console.log('Still playing at ', currentTime);
-                // já está tocando, só acerta a posição se estiver muito defasado
-                if (Math.abs(currentTime - t) > 3) {
-                    console.log('Adjusting time to ', t);
-                    player.seekTo(t, true);
-                }
-                return;
-            }
-        }
 
-        console.log('New video.');
-        currentVideo = current;
         function changeVideoId() {
             setTimeout(function () {
                 if (!playerReady) {
                     changeVideoId();
                     return;
                 }
+
+                var t = Math.round(current.startTime / 1000);
+                if (currentVideo != null && currentVideo.uuid === current.uuid) {
+                    // mesmo video atual
+                    console.log('Same video.');
+                    if (player.getPlayerState() === YT.PlayerState.PLAYING) {
+                        var currentTime = player.getCurrentTime();
+                        console.log('Still playing at ', currentTime);
+                        // já está tocando, só acerta a posição se estiver muito defasado
+                        if (Math.abs(currentTime - t) > 3) {
+                            console.log('Adjusting time to ', t);
+                            player.seekTo(t, true);
+                        }
+                        return;
+                    }
+                }
+                console.log('New video.');
+                currentVideo = current;
 
                 console.log('Playing ', current.url, ' starting at ', t);
                 player.loadVideoById(current.url, t);
@@ -190,24 +227,34 @@
 
     socket.on('usersChanged', function () {
         console.log("usersChanged")
-        updateUsers()
+        updateUsers();
     });
 
     socket.on('connect', function () {
         socket.emit('userConnected');
+        console.log('Connected.');
+        updateUsers();
+        updateQueue();
     })
 
-    updateUsers()
+    socket.on('disconnect', function () {
+        console.log('Disconnected :(')
+    });
+
     function updateUsers() {
-        var usersDiv = document.getElementById("users")
+        var usersListDiv = document.getElementById("usersList")
         getJson("/users", function success(users) {
-            usersDiv.innerHTML = users.map(function (user) {
-                return user.name || user.hostname || user.ip
+            usersListDiv.innerHTML = users.map(function (user) {
+                const showName = user.showName;
+                if (showName === user.hostname || showName === user.ip)
+                    return showName;
+                return showName + ' (' + ( user.hostname || user.ip ) + ')'
             }).sort().join("<br>");
         }, function () {
-            usersDiv.innerHTML = "Error loading users";
+            usersListDiv.innerHTML = "Error loading users";
         })
     }
+    setInterval(updateUsers, 10000);
 
     function getJson(url, success, failure) {
         var request = new XMLHttpRequest();
@@ -227,7 +274,7 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script>
     (function () {
-        var searchForm = document.getElementById("search");
+        var searchForm = document.getElementById("searchForm");
 
         gapi.load('client', start);
         function start() {
@@ -261,7 +308,7 @@
             var resultsContainer = document.createDocumentFragment();
             results.items.forEach(function (video) {
                 var videoContainer = document.createElement("div");
-                var videoName = document.createElement("h1");
+                var videoName = document.createElement("h4");
                 var videoThumbnail = document.createElement("img");
                 var videoSuggestButton = document.createElement("button");
                 videoContainer.appendChild(videoThumbnail);
@@ -279,17 +326,31 @@
                 videoThumbnail.src = video.snippet.thumbnails.default.url;
                 videoSuggestButton.innerHTML = "Suggest";
                 videoSuggestButton.dataset.videoId = video.id.videoId;
+                videoSuggestButton.dataset.videoTitle = video.snippet.title;
             });
-            var elementById = document.getElementById("results");
-            elementById.innerHTML = "";
-            elementById.appendChild(resultsContainer);
+            const resultsDiv = document.getElementById("results");
+            resultsDiv.innerHTML = "";
+            resultsDiv.appendChild(resultsContainer);
         }
 
         function videoSuggestButtonClick(ev) {
             ev.preventDefault();
-            sendSuggestion(ev.target.dataset.videoId)
+            sendSuggestion(ev.target.dataset.videoId, ev.target.dataset.videoTitle);
+            clearResults();
+            const songSuggested = document.getElementById('songSuggested');
+            songSuggested.style.display = 'block';
+            songSuggested.innerText = 'Song ' + ev.target.dataset.videoTitle + ' suggested!'
+            setTimeout(function () {
+                songSuggested.style.display = 'none';
+            }, 5000);
+
         }
     }())
+
+    function clearResults() {
+        const resultsDiv = document.getElementById("results");
+        resultsDiv.innerHTML = "";
+    }
 </script>
 </body>
 </html>
