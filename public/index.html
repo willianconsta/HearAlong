@@ -94,7 +94,7 @@
             playedMusics.removeChild(playedMusics.lastElementChild);
         }
         var lastPlayed = document.createElement('li');
-        const skipMessage = ( user ? " (Skipped by " + user.name + ")" : "" );
+        const skipMessage = ( user ? " (Skipped by " + user.showName + ")" : "" );
         lastPlayed.innerHTML = "<a href='https://www.youtube.com/watch?v=" + video.url + "'>" + video.title + "</a> " + skipMessage;
         playedMusics.insertBefore(lastPlayed, playedMusics.firstElementChild);
     }
