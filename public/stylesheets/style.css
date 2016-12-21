@@ -3,14 +3,23 @@ body {
   font: 14px "Lucida Grande", Helvetica, Arial, sans-serif;
 }
 
+div {
+  padding: 5px;
+}
+
 .logo {
   padding: 2px;
+}
+
+ol {
+  list-style-position: inside;
 }
 
 .currentMusic {
   font-weight: bold;
   text-align: center;
   padding: 10px;
+  height: 20px;
 }
 
 .controlButtons {

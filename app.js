@@ -27,7 +27,8 @@ io.on('connection', function (socket) {
         url: nextVideo.url,
         title: nextVideo.title,
         uuid: nextVideo.uuid,
-        startTime: startTime
+        startTime: startTime,
+        user: nextVideo.user
       }
       socket.emit('playVideo', currentVideo)
       io.emit('playVideo', currentVideo)
@@ -142,7 +143,7 @@ io.on('connection', function (socket) {
 express()
   .use(express.static('public'))
   .get('/queue', function (req, res, next) {
-    res.json(queue.slice(1))
+    res.json({ queue: queue.slice(1, 10), size: queue.length - 1 })
     next()
   })
   .get('/users', function (req, res, next) {

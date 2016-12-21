@@ -28,7 +28,10 @@
 <div style="text-align: center">
     <div id="logo" class="logo">FIESTA!</div>
     <div id="controlButtons" class="controlButtons">
-        <div id="current" class="currentMusic"></div>
+        <div>
+            <span id="current" class="currentMusic"></span>
+            <span id="currentTime"></span>
+        </div>
         <button onclick="skip()">Skip</button>
         <button onclick="askName()">Change Name</button>
     </div>
@@ -38,7 +41,7 @@
     <form id="searchForm">
         <label>
             <span>Search:</span>
-            <input type="text" name="searchInput"/>
+            <input type="text" name="searchInput" id="searchInput"/>
         </label>
         <input type="submit" value="Go!"/>
         <input type="button" value="Clear results" onclick="clearResults()"/>
@@ -57,15 +60,16 @@
         <span id="emptyqueue" style="display: none">The queue is empty! Suggest something epic!</span>
         <ol id="queue">
         </ol>
+    </div>
+    <div id="users">
+        <span>Online users:</span>
+        <div id="usersList">
+        </div>
+    </div>
+    <div style="text-align: center">
         <span id="previousMsg" style="display: none">Previous songs:</span>
         <ol id="playedMusics">
         </ol>
-    </div>
-</div>
-
-<div id="users">
-    <span>Online users:</span>
-    <div id="usersList">
     </div>
 </div>
 
@@ -76,7 +80,7 @@
 
     function askName() {
         var person = prompt("Please enter your name", "VeryHappyUser");
-        if ( person ) {
+        if (person) {
             socket.emit('userName', person);
             updateUsers();
         }
@@ -92,13 +96,20 @@
         var previousMsg = document.getElementById('previousMsg');
         previousMsg.style.display = 'block';
         var playedMusics = document.getElementById('playedMusics');
-        if (playedMusics.childElementCount > 4) {
+        if (playedMusics.childElementCount > 9) {
             playedMusics.removeChild(playedMusics.lastElementChild);
         }
         var lastPlayed = document.createElement('li');
         const skipMessage = ( user ? " (Skipped by " + user.showName + ")" : "" );
-        lastPlayed.innerHTML = "<a href='https://www.youtube.com/watch?v=" + video.url + "'>" + video.title + "</a> " + skipMessage;
+        const replay = "<button onclick='sendSuggestion(\"" + video.url + "\",\"" + video.title + "\")'>I loved it! Play it again!</button>";
+        lastPlayed.innerHTML = "<span><a target='_blank' href='https://www.youtube.com/watch?v=" + video.url + "'>" + video.title + "</a> " + skipMessage + "</span> " + replay;
         playedMusics.insertBefore(lastPlayed, playedMusics.firstElementChild);
+    }
+
+    function timeFormat(timeInSeconds) {
+        const rounded = Math.round(timeInSeconds);
+        const seconds = (rounded % 60);
+        return Math.floor(rounded / 60) + ":" + ( seconds < 10 ? "0" + seconds : seconds );
     }
 
     // callback utilizada pelo youtube api
@@ -113,9 +124,16 @@
                 },
                 'onStateChange': function (state) {
                     if (state.data === YT.PlayerState.PLAYING) {
-                        document.getElementById('current').innerText = player.getVideoData().title;
+                        const intervalId = setInterval(function () {
+                            const timeDiv = document.getElementById("currentTime");
+                            timeDiv.innerText = timeFormat(player.getCurrentTime()) + "/" + timeFormat(player.getDuration());
+                        }, 250);
+                        setTimeout(function () {
+                            clearInterval(intervalId);
+                        }, player.getDuration() * 1000);
                     }
                     if (state.data === YT.PlayerState.ENDED || state.data === YT.PlayerState.VIDEO_CUED) {
+
                         if (currentVideo != null) {
                             addToPreviousSongs(currentVideo, null);
                             document.getElementById('current').innerText = '';
@@ -140,20 +158,26 @@
 
     function updateQueue() {
         console.log('Updating queue')
-        getJson('/queue', function (queue) {
-            console.log('Queue is ', queue.map(function (item) {
+        getJson('/queue', function (obj) {
+            console.log('Queue is ', obj.queue.map(function (item) {
                 return item.title;
             }).join(","))
             const queueList = document.getElementById('queue');
             const emptyMsg = document.getElementById('emptyqueue');
             queueList.innerHTML = "";
-            if (queue.length > 0) {
+            if (obj.queue.length > 0) {
                 emptyMsg.style.display = 'none';
-                queue.forEach(function (item) {
+                obj.queue.forEach(function (item) {
                     const queueItem = document.createElement('li');
                     queueItem.innerText = item.user.showName + ' suggested ' + item.title;
                     queueList.appendChild(queueItem);
                 });
+                if (obj.size > obj.queue.length) {
+                    const queueItem = document.createElement('li');
+                    const extraMusics = ( obj.size - obj.queue.length );
+                    queueItem.innerText = '... and more ' + extraMusics + ( extraMusics > 1 ? ' amazing songs!' : ' amazing song!');
+                    queueList.appendChild(queueItem);
+                }
             } else {
                 emptyMsg.style.display = 'block';
             }
@@ -220,7 +244,9 @@
                 currentVideo = current;
 
                 console.log('Playing ', current.url, ' starting at ', t);
+                document.getElementById('current').innerText = currentVideo.title + ' (suggested by ' + currentVideo.user.showName + ')';
                 player.loadVideoById(current.url, t);
+                updateQueue();
             }, 100);
         }
 
@@ -297,9 +323,14 @@
                 ev.preventDefault();
 
                 var searchQuery = searchForm.searchInput.value;
+                if (!searchQuery) {
+                    return;
+                }
                 return gapi.client.youtube.search.list({
                     q: searchQuery,
-                    part: 'id,snippet'
+                    part: 'id,snippet',
+                    type: 'video',
+                    maxResults: 25
                 }).then(function (response) {
                     return response.result;
                 }).then(showSearchResults);
@@ -342,16 +373,18 @@
             const songSuggested = document.getElementById('songSuggested');
             songSuggested.style.display = 'block';
             songSuggested.innerText = 'Song ' + ev.target.dataset.videoTitle + ' suggested!'
+            document.getElementById('searchInput').value = "";
             setTimeout(function () {
                 songSuggested.style.display = 'none';
             }, 5000);
-
         }
     }())
 
     function clearResults() {
         const resultsDiv = document.getElementById("results");
         resultsDiv.innerHTML = "";
+        const searchInput = document.getElementById("searchInput");
+        searchInput.value = "";
     }
 </script>
 </body>
