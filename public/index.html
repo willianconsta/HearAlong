@@ -76,8 +76,10 @@
 
     function askName() {
         var person = prompt("Please enter your name", "VeryHappyUser");
-        socket.emit('userName', person);
-        updateUsers();
+        if ( person ) {
+            socket.emit('userName', person);
+            updateUsers();
+        }
     }
 
     // 3. This function creates an <iframe> (and YouTube player)
